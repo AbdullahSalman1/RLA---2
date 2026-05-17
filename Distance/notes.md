@@ -8,3 +8,27 @@
 3. All NORMAL stops   → Clarke-Wright + 2-opt (distance optimization)
 
 No exceptions. No "but they're on the same street".
+
+"Critical deliveries first"     critical = [i for i in stop_indices 
+                                    if locations[i]["priority"] == "critical"]
+                                # separated and locked at front
+
+"Then high priority"            high = [i for i in stop_indices 
+                                    if locations[i]["priority"] == "high"]
+                                # locked after critical
+
+"Then normal"                   normal = [i for i in stop_indices 
+                                    if locations[i]["priority"] == "normal"]
+                                # goes to Clarke-Wright + 2-opt
+
+"within each priority level,    critical.sort(key=lambda i: (
+choose nearest or most              time_window[0],   # earliest first
+efficient order"                    time_window[1]))  # tightest deadline tiebreaker
+                                # same for high
+
+"Distance helps optimize        normal_routed = clarke_wright(normal, distances)
+but never overrides priority"   normal_routed = two_opt(normal_routed, distances)
+                                # distance optimization ONLY on normal stops
+
+"Final order"                   final_route = critical + high + normal_routed
+                                # priority first, distance second
