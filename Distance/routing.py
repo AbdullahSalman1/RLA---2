@@ -25,6 +25,7 @@ Run:
 """
 
 import requests
+from geocache import geocode_all as geocode_all_cached
 
 # ── API Key ───────────────────────────────────────────────────────────────────
 ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4MzMyNTBkYTBhMDRiYTg5MDQyYzkxNTQ4MDY0MzQ4IiwiaCI6Im11cm11cjY0In0="
@@ -53,17 +54,55 @@ DRIVERS = [
 
 # ── Orders for today ──────────────────────────────────────────────────────────
 ORDERS = [
-    {"id": "ORD-001", "name": "Hospital Saint-Antoine",  "address": "184 Rue du Faubourg Saint-Antoine, Paris", "priority": "critical", "is_cold": False, "is_suburban": False, "boxes": 5,  "time_window": ("06:30", "09:00")},
-    {"id": "ORD-002", "name": "Pharmacie du Marais",     "address": "10 Rue de Bretagne, Paris",                "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("08:00", "10:00")},
-    {"id": "ORD-003", "name": "Pharmacie Bastille",      "address": "6 Place de la Bastille, Paris",            "priority": "high",     "is_cold": True,  "is_suburban": False, "boxes": 3,  "time_window": ("08:00", "11:00")},
-    {"id": "ORD-004", "name": "Pharmacie Montparnasse",  "address": "3 Rue de Rennes, Paris",                   "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
-    {"id": "ORD-005", "name": "Pharmacie Neuilly",       "address": "2 Rue de Chartres, Neuilly-sur-Seine",     "priority": "high",     "is_cold": False, "is_suburban": True,  "boxes": 4,  "time_window": ("08:00", "10:00")},
-    {"id": "ORD-006", "name": "Pharmacie Créteil",       "address": "1 Rue Juliette Savar, Créteil",            "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 6,  "time_window": ("09:00", "17:00")},
-    {"id": "ORD-007", "name": "Pharmacie Saint-Denis",   "address": "2 Rue de la République, Saint-Denis",      "priority": "normal",   "is_cold": True,  "is_suburban": True,  "boxes": 3,  "time_window": ("09:00", "17:00")},
-    {"id": "ORD-008", "name": "Clinique du Parc",        "address": "21 Rue Leblanc, Paris",                    "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 8,  "time_window": ("08:00", "12:00")},
-    {"id": "ORD-009", "name": "Clinique Levallois",      "address": "22 Rue Voltaire, Levallois-Perret",         "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 10, "time_window": ("09:00", "17:00")},
-    {"id": "ORD-010", "name": "Clinique Aubervilliers",  "address": "83 Rue Édouard Vaillant, Aubervilliers",   "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 7,  "time_window": ("09:00", "17:00")},
+    # ── CRITICAL (hospital) ────────────────────────────────────────────────────
+    {"id": "ORD-001", "name": "Hôpital Saint-Antoine",        "address": "184 Rue du Faubourg Saint-Antoine, Paris",      "priority": "critical", "is_cold": False, "is_suburban": False, "boxes": 5,  "time_window": ("06:30", "09:00")},
+    {"id": "ORD-002", "name": "Hôpital Saint-Antoine (2)",    "address": "184 Rue du Faubourg Saint-Antoine, Paris",      "priority": "critical", "is_cold": True,  "is_suburban": False, "boxes": 3,  "time_window": ("06:30", "09:00")},
+
+    # ── HIGH PRIORITY — tight morning windows ─────────────────────────────────
+    {"id": "ORD-003", "name": "Pharmacie du Marais",          "address": "10 Rue de Bretagne, Paris",                    "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("08:00", "10:00")},
+    {"id": "ORD-004", "name": "Pharmacie Bastille",           "address": "6 Place de la Bastille, Paris",                "priority": "high",     "is_cold": True,  "is_suburban": False, "boxes": 3,  "time_window": ("08:00", "11:00")},
+    {"id": "ORD-005", "name": "Pharmacie Neuilly",            "address": "2 Rue de Chartres, Neuilly-sur-Seine",         "priority": "high",     "is_cold": False, "is_suburban": True,  "boxes": 4,  "time_window": ("08:00", "10:00")},
+    {"id": "ORD-006", "name": "Clinique du Parc",             "address": "21 Rue Leblanc, Paris",                        "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 8,  "time_window": ("08:00", "12:00")},
+    {"id": "ORD-007", "name": "Pharmacie Châtelet",           "address": "2 Rue des Halles, Paris",                      "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("08:00", "10:30")},
+    {"id": "ORD-008", "name": "Pharmacie Opéra",              "address": "6 Boulevard des Capucines, Paris",             "priority": "high",     "is_cold": True,  "is_suburban": False, "boxes": 2,  "time_window": ("08:00", "10:00")},
+    {"id": "ORD-009", "name": "Clinique Monceau",             "address": "55 Rue de Monceau, Paris",                     "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 6,  "time_window": ("08:30", "11:00")},
+    {"id": "ORD-010", "name": "Pharmacie République",         "address": "10 Place de la République, Paris",             "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 3,  "time_window": ("08:00", "10:00")},
+    {"id": "ORD-011", "name": "Pharmacie Nation",             "address": "1 Place de la Nation, Paris",                  "priority": "high",     "is_cold": True,  "is_suburban": False, "boxes": 2,  "time_window": ("08:00", "10:30")},
+    {"id": "ORD-012", "name": "Pharmacie Montparnasse Tour",  "address": "33 Avenue du Maine, Paris",                    "priority": "high",     "is_cold": False, "is_suburban": False, "boxes": 3,  "time_window": ("08:30", "11:00")},
+
+    # ── NORMAL — flexible windows, city ───────────────────────────────────────
+    {"id": "ORD-013", "name": "Pharmacie Montparnasse",       "address": "3 Rue de Rennes, Paris",                       "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-014", "name": "Pharmacie Pigalle",            "address": "4 Place Pigalle, Paris",                       "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-015", "name": "Pharmacie Belleville",         "address": "58 Rue de Belleville, Paris",                  "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 3,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-016", "name": "Pharmacie Oberkampf",          "address": "100 Rue Oberkampf, Paris",                     "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-017", "name": "Pharmacie Daumesnil",          "address": "210 Avenue Daumesnil, Paris",                  "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-018", "name": "Pharmacie Ledru-Rollin",       "address": "40 Avenue Ledru-Rollin, Paris",                "priority": "normal",   "is_cold": True,  "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "14:00")},
+    {"id": "ORD-019", "name": "Pharmacie Voltaire",           "address": "80 Boulevard Voltaire, Paris",                 "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 3,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-020", "name": "Pharmacie Charonne",           "address": "35 Rue de Charonne, Paris",                    "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-021", "name": "Pharmacie Saint-Paul",         "address": "12 Rue Saint-Antoine, Paris",                  "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-022", "name": "Pharmacie Temple",             "address": "15 Rue du Temple, Paris",                      "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-023", "name": "Pharmacie Arts et Métiers",    "address": "60 Rue Turbigo, Paris",                        "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 2,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-024", "name": "Pharmacie Réaumur",            "address": "100 Rue Réaumur, Paris",                       "priority": "normal",   "is_cold": False, "is_suburban": False, "boxes": 3,  "time_window": ("09:00", "17:00")},
+
+    # ── NORMAL — flexible windows, suburban ───────────────────────────────────
+    {"id": "ORD-025", "name": "Pharmacie Créteil",            "address": "1 Rue Juliette Savar, Créteil",                "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 6,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-026", "name": "Pharmacie Saint-Denis",        "address": "2 Rue de la République, Saint-Denis",          "priority": "normal",   "is_cold": True,  "is_suburban": True,  "boxes": 3,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-027", "name": "Clinique Levallois",           "address": "22 Rue Voltaire, Levallois-Perret",            "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 10, "time_window": ("09:00", "17:00")},
+    {"id": "ORD-028", "name": "Clinique Aubervilliers",       "address": "83 Rue Édouard Vaillant, Aubervilliers",       "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 7,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-029", "name": "Pharmacie Vincennes",          "address": "3 Rue de Fontenay, Vincennes",                 "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 4,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-030", "name": "Pharmacie Montreuil",          "address": "10 Place Jean Jaurès, Montreuil",              "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 5,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-031", "name": "Clinique Val-de-Marne",        "address": "40 Avenue de Verdun, Créteil",                 "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 8,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-032", "name": "Pharmacie Boulogne",           "address": "15 Rue de Silly, Boulogne-Billancourt",        "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 4,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-033", "name": "Pharmacie Issy",               "address": "20 Rue Renan, Issy-les-Moulineaux",            "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 3,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-034", "name": "Pharmacie Ivry",               "address": "12 Place Voltaire, Ivry-sur-Seine",            "priority": "normal",   "is_cold": True,  "is_suburban": True,  "boxes": 3,  "time_window": ("09:00", "14:00")},
+    {"id": "ORD-035", "name": "Pharmacie Pantin",             "address": "5 Rue Hoche, Pantin",                          "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 4,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-036", "name": "Clinique Levallois (2)",       "address": "40 Rue Aristide Briand, Levallois-Perret",     "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 6,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-037", "name": "Pharmacie Bagnolet",           "address": "8 Place Diderot, Bagnolet",                    "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 3,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-038", "name": "Pharmacie Bobigny",            "address": "1 Avenue Paul Vaillant-Couturier, Bobigny",    "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 5,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-039", "name": "Clinique Aubervilliers (2)",   "address": "52 Rue de la Commune de Paris, Aubervilliers", "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 7,  "time_window": ("09:00", "17:00")},
+    {"id": "ORD-040", "name": "Pharmacie Saint-Ouen",         "address": "10 Rue du Docteur Bauer, Saint-Ouen",          "priority": "normal",   "is_cold": False, "is_suburban": True,  "boxes": 4,  "time_window": ("09:00", "17:00")},
 ]
+
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
@@ -485,7 +524,7 @@ def print_routes(vehicle_routes):
 if __name__ == "__main__":
 
     # Step 1: Geocode all addresses → coordinates
-    locations = geocode_all(ORDERS)
+    locations = geocode_all_cached(ORDERS, WAREHOUSE)
 
     # Step 2: Real road distance matrix (one API call)
     distances, durations = get_distance_matrix(locations)

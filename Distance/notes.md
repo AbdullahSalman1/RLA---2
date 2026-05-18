@@ -32,3 +32,13 @@ but never overrides priority"   normal_routed = two_opt(normal_routed, distances
 
 "Final order"                   final_route = critical + high + normal_routed
                                 # priority first, distance second
+
+
+
+
+constraints :
+
+hospital delivery constraint (9am)
+A->B->C (C due time is before A)
+break constraint 
+
