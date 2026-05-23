@@ -24,14 +24,14 @@ Run:
     python routing.py
 """
 
+from pathlib import Path
+
 import requests
+from openpyxl import load_workbook
 from geocache import geocode_all as geocode_all_cached
 
 # ── API Key ───────────────────────────────────────────────────────────────────
 ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4MzMyNTBkYTBhMDRiYTg5MDQyYzkxNTQ4MDY0MzQ4IiwiaCI6Im11cm11cjY0In0="
-
-# ── Warehouse ─────────────────────────────────────────────────────────────────
-WAREHOUSE = {"id": "W0", "name": "Warehouse", "address": "14 Rue du Chemin Vert, Paris"}
 
 # ── Fleet ─────────────────────────────────────────────────────────────────────
 VEHICLES = [
@@ -52,10 +52,70 @@ DRIVERS = [
     {"id": "D5", "name": "Romain D.",    "certified_refrigerated": False, "shift_start": "07:00", "max_hours": 8},
 ]
 
-# ── Orders for today ──────────────────────────────────────────────────────────
+DATA_FILE = Path(__file__).with_name("delivery_data.xlsx")
 
 
+def _as_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value is None:
+        return False
+    return str(value).strip().lower() in {"1", "true", "yes", "y", "oui"}
 
+
+def load_delivery_data(path=DATA_FILE):
+    """Load warehouse and orders from delivery_data.xlsx."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing {path.name}. Create it with warehouse and orders sheets."
+        )
+
+    wb = load_workbook(path)
+
+    if "warehouse" not in wb.sheetnames or "orders" not in wb.sheetnames:
+        raise ValueError(
+            f"{path.name} must contain 'warehouse' and 'orders' sheets."
+        )
+
+    ws_wh = wb["warehouse"]
+    wh_rows = list(ws_wh.iter_rows(values_only=True))
+    wh_headers = [str(v).strip().lower() for v in wh_rows[0]]
+    wh_data = wh_rows[1]
+    wh_map = {name: idx for idx, name in enumerate(wh_headers)}
+
+    warehouse = {
+        "id": str(wh_data[wh_map["id"]]),
+        "name": str(wh_data[wh_map["name"]]),
+        "address": str(wh_data[wh_map["address"]]),
+    }
+
+    ws_orders = wb["orders"]
+    order_rows = list(ws_orders.iter_rows(values_only=True))
+    order_headers = [str(v).strip().lower() for v in order_rows[0]]
+    order_map = {name: idx for idx, name in enumerate(order_headers)}
+
+    orders = []
+    for row in order_rows[1:]:
+        if not any(row):
+            continue
+        orders.append({
+            "id": str(row[order_map["id"]]),
+            "name": str(row[order_map["name"]]),
+            "address": str(row[order_map["address"]]),
+            "priority": str(row[order_map["priority"]]),
+            "is_cold": _as_bool(row[order_map["is_cold"]]),
+            "is_suburban": _as_bool(row[order_map["is_suburban"]]),
+            "boxes": int(row[order_map["boxes"]]),
+            "time_window": (
+                str(row[order_map["time_window_start"]]),
+                str(row[order_map["time_window_end"]]),
+            ),
+        })
+
+    return warehouse, orders
+
+
+WAREHOUSE, ORDERS = load_delivery_data()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — GEOCODING
@@ -453,7 +513,7 @@ def two_opt(route, distances):
 
 SERVICE_TIME_MIN = 10  # average unloading time per stop (minutes)
 
-def simulate_route(route_indices, locations, durations, driver):
+def simulate_route(route_indices, locations, durations, driver, distances=None):
     """
     Walk through the sequenced route and compute:
     - Arrival time at each stop
@@ -480,6 +540,8 @@ def simulate_route(route_indices, locations, durations, driver):
         is_late       = arrival_min > tw_end
         departure_min = arrival_min + SERVICE_TIME_MIN
 
+        dist_from_prev = distances[prev_idx][idx] if distances else 0.0
+
         results.append({
             "id":             loc["id"],
             "name":           loc["name"],
@@ -490,6 +552,7 @@ def simulate_route(route_indices, locations, durations, driver):
             "is_late":        is_late,
             "late_by_min":    max(0, int(arrival_min - tw_end)),
             "shift_exceeded": departure_min > max_end_min,
+            "dist_from_prev": round(dist_from_prev, 2),
         })
 
         current_min = departure_min
@@ -522,8 +585,8 @@ def print_routes(vehicle_routes):
 
         dname = driver["name"] if driver else "⚠ No driver"
         print(f"\n  🚐 {v['label']}  |  Driver: {dname}  |  {len(stops)} stops  |  {km:.1f} km  |  ~{int(dur)} min")
-        print(f"  {'#':<4} {'Client':<28} {'Priority':<10} {'Window':<14} {'Arrival':<10} {'Status'}")
-        print("  " + "-"*72)
+        print(f"  {'#':<4} {'Client':<28} {'Priority':<10} {'Window':<14} {'Arrival':<10} {'Dist':>8}  {'Status'}")
+        print("  " + "-"*80)
 
         for i, stop in enumerate(stops):
             priority_icon = "🔴" if stop["priority"] == "critical" else ("🟡" if stop["priority"] == "high" else "⚪")
@@ -531,13 +594,17 @@ def print_routes(vehicle_routes):
             shift_warn    = " ⚠ SHIFT EXCEEDED" if stop["shift_exceeded"] else ""
             late_note     = f" (+{stop['late_by_min']} min)" if stop["is_late"] else ""
 
-            print(f"  {i+1:<4} {stop['name']:<28} {priority_icon} {stop['priority']:<8} {stop['window']:<14} {stop['arrival']:<10} {status}{late_note}{shift_warn}")
+            dist_str = f"{stop['dist_from_prev']:.1f} km" if i > 0 else "start"
+            print(f"  {i+1:<4} {stop['name']:<28} {priority_icon} {stop['priority']:<8} {stop['window']:<14} {stop['arrival']:<10} {dist_str:>8}  {status}{late_note}{shift_warn}")
 
             if stop["is_late"]:
                 total_late += 1
 
-        # Return to warehouse
-        print(f"  {'':4} {'↩ Return to Warehouse':<28}")
+        # Return to warehouse with distance
+        if entry.get("return_km") is not None:
+            print(f"  {'':<4} {'↩ Return to Warehouse':<28} {'':<10} {'':<14} {'':<10} {entry['return_km']:.1f} km")
+        else:
+            print(f"  {'':<4} {'↩ Return to Warehouse':<28}")
 
     print("\n" + "="*70)
     print(f"  SUMMARY")
@@ -609,7 +676,10 @@ if __name__ == "__main__":
         total_km += distances[final_route[-1]][0]
 
         # Simulate timing
-        sim_stops, total_min = simulate_route(final_route, locations, durations, driver or DRIVERS[-1])
+        sim_stops, total_min = simulate_route(final_route, locations, durations, driver or DRIVERS[-1], distances)
+
+        # Distance from last stop back to warehouse
+        return_km = distances[final_route[-1]][0] if final_route else 0
 
         vehicle_routes.append({
             "vehicle":            v,
@@ -617,6 +687,7 @@ if __name__ == "__main__":
             "stops":              sim_stops,
             "total_km":           total_km,
             "total_duration_min": total_min,
+            "return_km":          round(return_km, 2),
         })
 
     # Step 6: Print final delivery plan
