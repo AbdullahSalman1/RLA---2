@@ -33,26 +33,8 @@ from geocache import geocode_all as geocode_all_cached
 # ── API Key ───────────────────────────────────────────────────────────────────
 ORS_API_KEY = "eyJvcmciOiI1YjNjZTM1OTc4NTExMTAwMDFjZjYyNDgiLCJpZCI6Ijc4MzMyNTBkYTBhMDRiYTg5MDQyYzkxNTQ4MDY0MzQ4IiwiaCI6Im11cm11cjY0In0="
 
-# ── Fleet ─────────────────────────────────────────────────────────────────────
-VEHICLES = [
-    {"id": "V1", "type": "small",        "label": "Small Van 1",      "max_stops": 30},
-    {"id": "V2", "type": "small",        "label": "Small Van 2",      "max_stops": 30},
-    {"id": "V3", "type": "small",        "label": "Small Van 3",      "max_stops": 30},
-    {"id": "V4", "type": "large",        "label": "Large Van 1",      "max_stops": 20},
-    {"id": "V5", "type": "large",        "label": "Large Van 2",      "max_stops": 20},
-    {"id": "V6", "type": "refrigerated", "label": "Refrigerated Van", "max_stops": 15},
-]
-
-# ── Drivers ───────────────────────────────────────────────────────────────────
-DRIVERS = [
-    {"id": "D1", "name": "Alexandre M.", "certified_refrigerated": True,  "shift_start": "06:30", "max_hours": 8},
-    {"id": "D2", "name": "Fatima B.",    "certified_refrigerated": True,  "shift_start": "06:30", "max_hours": 8},
-    {"id": "D3", "name": "Thomas L.",    "certified_refrigerated": False, "shift_start": "07:00", "max_hours": 8},
-    {"id": "D4", "name": "Yasmine K.",   "certified_refrigerated": False, "shift_start": "07:00", "max_hours": 8},
-    {"id": "D5", "name": "Romain D.",    "certified_refrigerated": False, "shift_start": "07:00", "max_hours": 8},
-]
-
 DATA_FILE = Path(__file__).with_name("delivery_data.xlsx")
+FLEET_FILE = Path(__file__).with_name("fleet_data.xlsx")
 
 
 def _as_bool(value):
@@ -64,7 +46,7 @@ def _as_bool(value):
 
 
 def load_delivery_data(path=DATA_FILE):
-    """Load warehouse and orders from delivery_data.xlsx."""
+    """Load warehouse and orders from the delivery workbook."""
     if not path.exists():
         raise FileNotFoundError(
             f"Missing {path.name}. Create it with warehouse and orders sheets."
@@ -115,7 +97,58 @@ def load_delivery_data(path=DATA_FILE):
     return warehouse, orders
 
 
+def load_fleet_data(path=FLEET_FILE):
+    """Load vehicles and drivers from fleet_data.xlsx."""
+    if not path.exists():
+        raise FileNotFoundError(
+            f"Missing {path.name}. Create it with vehicles and drivers sheets."
+        )
+
+    wb = load_workbook(path)
+
+    if "vehicles" not in wb.sheetnames or "drivers" not in wb.sheetnames:
+        raise ValueError(
+            f"{path.name} must contain 'vehicles' and 'drivers' sheets."
+        )
+
+    ws_vehicles = wb["vehicles"]
+    vehicle_rows = list(ws_vehicles.iter_rows(values_only=True))
+    vehicle_headers = [str(v).strip().lower() for v in vehicle_rows[0]]
+    vehicle_map = {name: idx for idx, name in enumerate(vehicle_headers)}
+
+    vehicles = []
+    for row in vehicle_rows[1:]:
+        if not any(row):
+            continue
+        vehicles.append({
+            "id": str(row[vehicle_map["id"]]),
+            "type": str(row[vehicle_map["type"]]),
+            "label": str(row[vehicle_map["label"]]),
+            "max_stops": int(row[vehicle_map["max_stops"]]),
+        })
+
+    ws_drivers = wb["drivers"]
+    driver_rows = list(ws_drivers.iter_rows(values_only=True))
+    driver_headers = [str(v).strip().lower() for v in driver_rows[0]]
+    driver_map = {name: idx for idx, name in enumerate(driver_headers)}
+
+    drivers = []
+    for row in driver_rows[1:]:
+        if not any(row):
+            continue
+        drivers.append({
+            "id": str(row[driver_map["id"]]),
+            "name": str(row[driver_map["name"]]),
+            "certified_refrigerated": _as_bool(row[driver_map["certified_refrigerated"]]),
+            "shift_start": str(row[driver_map["shift_start"]]),
+            "max_hours": int(row[driver_map["max_hours"]]),
+        })
+
+    return vehicles, drivers
+
+
 WAREHOUSE, ORDERS = load_delivery_data()
+VEHICLES, DRIVERS = load_fleet_data()
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # STEP 1 — GEOCODING
